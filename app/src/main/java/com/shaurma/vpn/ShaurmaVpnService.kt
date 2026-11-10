@@ -8,6 +8,7 @@ import hev.htproxy.TProxyService
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -72,6 +73,7 @@ class ShaurmaVpnService : VpnService() {
         val raw = getSharedPreferences("vpn", MODE_PRIVATE).getString("key", null)
             ?: throw IOException("Ключ не задан")
         val key = KeyCodec.parse(raw)
+        VpnController.log("старт: метод ${key.method}")
 
         // 1. Сервер вообще отвечает?
         try {
@@ -102,7 +104,7 @@ class ShaurmaVpnService : VpnService() {
         synchronized(lock) { sslocal = proc }
         Thread {
             try {
-                proc.inputStream.bufferedReader().forEachLine { Log.d(TAG, "sslocal: $it") }
+                proc.inputStream.bufferedReader().forEachLine { Log.d(TAG, "sslocal: $it"); VpnController.log("sslocal: $it") }
             } catch (_: IOException) {
             }
         }.apply { isDaemon = true }.start()
@@ -120,6 +122,9 @@ class ShaurmaVpnService : VpnService() {
         }
         if (stopping) return
         if (!ready) throw IOException("клиент Shadowsocks не отвечает")
+
+        selfTest()
+        if (stopping) return
 
         // 3. TUN-интерфейс (наше приложение в него не попадает)
         val builder = Builder()
@@ -156,13 +161,20 @@ class ShaurmaVpnService : VpnService() {
               cache-size: 10000
             misc:
               task-stack-size: 81920
-              log-level: warn
+              log-file: ${File(filesDir, "hev.log").absolutePath}
+              log-level: info
             """.trimIndent()
         )
         if (!TProxyService.TProxyStartService(hevCfg.absolutePath, pfd.fd)) {
             throw IOException("не запустился туннель")
         }
         synchronized(lock) { tunnelStarted = true }
+        VpnController.statsFn = { stats() }
+        VpnController.log("туннель запущен")
+        Thread({
+            Thread.sleep(8000)
+            if (!stopping) VpnController.log("через 8 с: " + stats())
+        }, "shaurma-stats").apply { isDaemon = true }.start()
 
         // Если sslocal упадёт — честно отключаемся
         Thread({
@@ -180,6 +192,56 @@ class ShaurmaVpnService : VpnService() {
         VpnController.state.value = VpnController.State.ON
     }
 
+    private fun stats(): String = try {
+        val a = TProxyService.TProxyGetStats()
+        "пакеты туда ${a[0]} (${a[1]} Б), обратно ${a[2]} (${a[3]} Б)"
+    } catch (e: Throwable) {
+        "статистика недоступна"
+    }
+
+    /** Проверяем путь «клиент → сервер → интернет» до запуска туннеля. */
+    private fun selfTest() {
+        VpnController.log("самотест: запрос через прокси…")
+        var last = "?"
+        for (host in listOf("example.com", "cloudflare.com")) {
+            try {
+                Socket().use { s ->
+                    s.soTimeout = 10000
+                    s.connect(InetSocketAddress("127.0.0.1", SOCKS_PORT), 2000)
+                    val o = s.getOutputStream()
+                    val i = s.getInputStream()
+                    o.write(byteArrayOf(5, 1, 0)); o.flush()
+                    val h = ByteArray(2); readFully(i, h)
+                    if (h[1].toInt() != 0) throw IOException("SOCKS: метод не принят")
+                    val hb = host.toByteArray()
+                    o.write(byteArrayOf(5, 1, 0, 3, hb.size.toByte()) + hb + byteArrayOf(0, 80)); o.flush()
+                    val r = ByteArray(4); readFully(i, r)
+                    if (r[1].toInt() != 0) throw IOException("прокси отказал, код ${r[1]}")
+                    val rest = when (r[3].toInt()) { 1 -> 6; 4 -> 18; else -> i.read() + 2 }
+                    readFully(i, ByteArray(rest))
+                    o.write("HEAD / HTTP/1.0\r\nHost: $host\r\n\r\n".toByteArray()); o.flush()
+                    val resp = ByteArray(5); readFully(i, resp)
+                    if (String(resp) != "HTTP/") throw IOException("странный ответ")
+                }
+                VpnController.log("самотест: ок ($host)")
+                return
+            } catch (e: IOException) {
+                last = e.message ?: e.javaClass.simpleName
+                VpnController.log("самотест $host: $last")
+            }
+        }
+        throw IOException("сервер не пропускает трафик ($last). Проверь дату и время на телефоне — они должны быть автоматическими")
+    }
+
+    private fun readFully(i: InputStream, b: ByteArray) {
+        var n = 0
+        while (n < b.size) {
+            val r = i.read(b, n, b.size - n)
+            if (r < 0) throw IOException("соединение закрыто")
+            n += r
+        }
+    }
+
     private fun isAlive(p: Process): Boolean = try {
         p.exitValue()
         false
@@ -190,6 +252,7 @@ class ShaurmaVpnService : VpnService() {
     private fun teardown() {
         synchronized(lock) {
             stopping = true
+            VpnController.statsFn = null
             if (tunnelStarted) {
                 runCatching { TProxyService.TProxyStopService() }
                 tunnelStarted = false

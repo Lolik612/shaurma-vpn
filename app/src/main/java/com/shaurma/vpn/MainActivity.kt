@@ -5,9 +5,11 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.app.Activity
-import android.content.Intent
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.view.View
@@ -17,33 +19,52 @@ import android.view.animation.LinearInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var mainScreen: View
-    private lateinit var keyScreen: View
+    private lateinit var loginScreen: View
+    private lateinit var settingsScreen: View
     private lateinit var statusText: TextView
     private lateinit var timerText: TextView
+    private lateinit var subText: TextView
     private lateinit var shaurma: ImageView
     private lateinit var buttonHolder: View
     private lateinit var ringOn: View
     private lateinit var pulse1: View
     private lateinit var pulse2: View
-    private lateinit var keyInput: EditText
-    private lateinit var keyError: TextView
-    private lateinit var keyCancel: TextView
+    private lateinit var btnGoogle: View
+    private lateinit var userBox: View
+    private lateinit var userInput: EditText
+    private lateinit var loginError: TextView
+    private lateinit var loginSub: TextView
 
     private lateinit var spin: ObjectAnimator
     private lateinit var breath: ObjectAnimator
@@ -52,10 +73,13 @@ class MainActivity : AppCompatActivity() {
     private var stopSpinAnim: ObjectAnimator? = null
     private var timerJob: Job? = null
 
+    private var pendingIdToken: String? = null
+    private var fetching = false
+
     private val vpnState get() = VpnController.state.value
 
     private val backCallback = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() = showMain(animated = true)
+        override fun handleOnBackPressed() = showScreen(mainScreen)
     }
 
     private val vpnPermission =
@@ -68,32 +92,43 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         mainScreen = findViewById(R.id.mainScreen)
-        keyScreen = findViewById(R.id.keyScreen)
+        loginScreen = findViewById(R.id.loginScreen)
+        settingsScreen = findViewById(R.id.settingsScreen)
         statusText = findViewById(R.id.statusText)
         timerText = findViewById(R.id.timerText)
+        subText = findViewById(R.id.subText)
         shaurma = findViewById(R.id.shaurma)
         buttonHolder = findViewById(R.id.buttonHolder)
         ringOn = findViewById(R.id.ringOn)
         pulse1 = findViewById(R.id.pulse1)
         pulse2 = findViewById(R.id.pulse2)
-        keyInput = findViewById(R.id.keyInput)
-        keyError = findViewById(R.id.keyError)
-        keyCancel = findViewById(R.id.keyCancel)
+        btnGoogle = findViewById(R.id.btnGoogle)
+        userBox = findViewById(R.id.userBox)
+        userInput = findViewById(R.id.userInput)
+        loginError = findViewById(R.id.loginError)
+        loginSub = findViewById(R.id.loginSub)
 
         setupAnimators()
         onBackPressedDispatcher.addCallback(this, backCallback)
 
         buttonHolder.setOnClickListener { onToggle() }
-        findViewById<View>(R.id.locationCard).setOnClickListener {
-            if (vpnState == VpnController.State.OFF) showKeyScreen(animated = true)
+        findViewById<View>(R.id.gear).setOnClickListener { openSettings() }
+        findViewById<View>(R.id.subCard).setOnClickListener { openSettings() }
+        btnGoogle.setOnClickListener { doGoogle() }
+        findViewById<View>(R.id.btnUser).setOnClickListener { doRegister() }
+        findViewById<View>(R.id.setBuy).setOnClickListener { openBot() }
+        findViewById<View>(R.id.setDiag).setOnClickListener { showDiag() }
+        findViewById<View>(R.id.setLogout).setOnClickListener { logout() }
+        findViewById<View>(R.id.setBack).setOnClickListener { showScreen(mainScreen) }
+
+        if (loggedIn()) {
+            showScreen(mainScreen, animated = false)
+            updateSubUi()
+        } else {
+            prepareLogin()
+            showScreen(loginScreen, animated = false)
         }
-        findViewById<View>(R.id.keyPaste).setOnClickListener { pasteFromClipboard() }
-        findViewById<View>(R.id.keyContinue).setOnClickListener { submitKey() }
-        keyCancel.setOnClickListener { showMain(animated = true) }
 
-        if (savedKey() != null) showMain(animated = false) else showKeyScreen(animated = false)
-
-        // Состояние VPN приходит от сервиса
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { VpnController.state.collect { applyState(it) } }
@@ -104,6 +139,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (loggedIn()) refreshStatus()
     }
 
     // ───────────────────────── анимации ─────────────────────────
@@ -244,85 +284,253 @@ class MainActivity : AppCompatActivity() {
             startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_DISCONNECT))
             return
         }
-        if (savedKey() == null) {
-            showKeyScreen(animated = true)
-            return
+        if (fetching) return
+        fetching = true
+        setStatus(R.string.status_connecting, 0xFFFFC477.toInt())
+        lifecycleScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { Api.post("/api/config", creds()) }
+                saveSub(r)
+                when {
+                    r.optBoolean("ok") -> {
+                        prefs().edit().putString("key", r.getString("key")).apply()
+                        val intent = VpnService.prepare(this@MainActivity)
+                        if (intent != null) vpnPermission.launch(intent) else startVpn()
+                    }
+                    r.optString("error") == "no_subscription" -> {
+                        applyState(vpnState)
+                        showNoSub()
+                    }
+                    r.optString("error") == "bad_token" -> logout()
+                    else -> {
+                        applyState(vpnState)
+                        Toast.makeText(this@MainActivity, "Ошибка сервера: ${r.optString("error")}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                applyState(vpnState)
+                Toast.makeText(this@MainActivity, "Нет связи с сервером. Проверь интернет", Toast.LENGTH_LONG).show()
+            } finally {
+                fetching = false
+            }
         }
-        val intent = VpnService.prepare(this)
-        if (intent != null) vpnPermission.launch(intent) else startVpn()
     }
 
     private fun startVpn() {
         startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_CONNECT))
     }
 
-    // ───────────────────────── ключ доступа ─────────────────────────
+    private fun showNoSub() {
+        AlertDialog.Builder(this)
+            .setTitle("Подписка не активна")
+            .setMessage("Возьми бесплатные 12 часов или купи подписку в нашем Telegram-боте. Не забудь указать свой юзер: ${prefs().getString("user", "")}")
+            .setPositiveButton("Открыть бота") { _, _ -> openBot() }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    private fun openBot() {
+        val bot = prefs().getString("bot", "") ?: ""
+        if (bot.isEmpty()) {
+            Toast.makeText(this, "Бот пока недоступен", Toast.LENGTH_SHORT).show()
+            return
+        }
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/$bot"))) }
+    }
+
+    // ───────────────────────── аккаунт ─────────────────────────
 
     private fun prefs() = getSharedPreferences("vpn", MODE_PRIVATE)
 
-    private fun savedKey(): String? =
-        prefs().getString("key", null)?.takeIf { it.isNotBlank() }
+    private fun loggedIn() = !prefs().getString("token", null).isNullOrEmpty() && !prefs().getString("user", null).isNullOrEmpty()
 
-    private fun pasteFromClipboard() {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val text = cm.primaryClip?.takeIf { it.itemCount > 0 }
-            ?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
-        if (text.isNullOrEmpty()) {
-            Toast.makeText(this, R.string.key_empty, Toast.LENGTH_SHORT).show()
+    private fun creds() = JSONObject()
+        .put("username", prefs().getString("user", ""))
+        .put("token", prefs().getString("token", ""))
+
+    private fun saveSub(r: JSONObject) {
+        val e = prefs().edit()
+        r.optString("bot").takeIf { it.isNotEmpty() }?.let { e.putString("bot", it) }
+        if (r.has("active")) {
+            e.putBoolean("active", r.optBoolean("active"))
+                .putBoolean("forever", r.optBoolean("forever"))
+                .putLong("expires", r.optLong("expires"))
+        }
+        e.apply()
+        updateSubUi()
+    }
+
+    private fun subSummary(): String {
+        val p = prefs()
+        return when {
+            p.getBoolean("forever", false) -> "Бессрочная ♾"
+            p.getBoolean("active", false) ->
+                "до " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(p.getLong("expires", 0) * 1000))
+            p.contains("active") -> "Не активна"
+            else -> "Проверяем…"
+        }
+    }
+
+    private fun updateSubUi() {
+        subText.text = subSummary()
+    }
+
+    private fun refreshStatus() {
+        lifecycleScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { Api.post("/api/status", creds()) }
+                if (r.optString("error") == "bad_token") logout() else saveSub(r)
+            } catch (_: Exception) {
+                if (!prefs().contains("active")) subText.text = "Нет связи с сервером"
+            }
+        }
+    }
+
+    private fun logout() {
+        startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_DISCONNECT))
+        prefs().edit().clear().apply()
+        pendingIdToken = null
+        prepareLogin()
+        showScreen(loginScreen)
+    }
+
+    private fun prepareLogin() {
+        loginError.visibility = View.GONE
+        val google = BuildConfig.GOOGLE_CLIENT_ID.isNotBlank()
+        btnGoogle.visibility = if (google) View.VISIBLE else View.GONE
+        userBox.visibility = if (google) View.GONE else View.VISIBLE
+        loginSub.text = if (google) "Войди через Google, чтобы начать" else "Создай аккаунт, чтобы начать"
+        if (BuildConfig.API_URL.isBlank()) showLoginError("Сервер не настроен в этой сборке")
+    }
+
+    private fun showLoginError(msg: String) {
+        loginError.text = msg
+        loginError.visibility = View.VISIBLE
+    }
+
+    private fun doGoogle() {
+        loginError.visibility = View.GONE
+        lifecycleScope.launch {
+            try {
+                val token = googleSignIn()
+                pendingIdToken = token
+                val r = withContext(Dispatchers.IO) { Api.post("/api/login", JSONObject().put("id_token", token)) }
+                when {
+                    r.optBoolean("ok") -> finishLogin(r)
+                    r.optString("error") == "need_username" -> {
+                        btnGoogle.visibility = View.GONE
+                        userBox.visibility = View.VISIBLE
+                        loginSub.text = "Google подтверждён. Осталось придумать юзер"
+                    }
+                    else -> showLoginError(loginMessage(r.optString("error")))
+                }
+            } catch (_: GetCredentialCancellationException) {
+            } catch (e: Exception) {
+                showLoginError("Не удалось войти: ${e.message ?: e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    private suspend fun googleSignIn(): String {
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_CLIENT_ID).build())
+            .build()
+        val c = CredentialManager.create(this).getCredential(this, request).credential
+        if (c is CustomCredential && c.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            return GoogleIdTokenCredential.createFrom(c.data).idToken
+        }
+        throw IllegalStateException("Google не вернул токен")
+    }
+
+    private fun doRegister() {
+        loginError.visibility = View.GONE
+        val name = userInput.text.toString().trim()
+        if (!Regex("^[A-Za-z0-9_]{3,20}$").matches(name)) {
+            showLoginError(loginMessage("bad_username"))
             return
         }
-        keyInput.setText(text)
-        keyInput.setSelection(text.length)
-        keyError.visibility = View.GONE
-    }
-
-    private fun submitKey() {
-        try {
-            val key = keyInput.text.toString().trim()
-            KeyCodec.parse(key)
-            prefs().edit().putString("key", key).apply()
-            keyError.visibility = View.GONE
-            keyInput.setText("")
-            hideKeyboard()
-            showMain(animated = true)
-        } catch (e: Exception) {
-            keyError.visibility = View.VISIBLE
+        val body = JSONObject().put("username", name)
+        pendingIdToken?.let { body.put("id_token", it) }
+        lifecycleScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) { Api.post("/api/register", body) }
+                if (r.optBoolean("ok")) finishLogin(r) else showLoginError(loginMessage(r.optString("error")))
+            } catch (e: Exception) {
+                showLoginError("Нет связи с сервером. Проверь интернет")
+            }
         }
     }
 
-    private fun hideKeyboard() {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(keyInput.windowToken, 0)
+    private fun loginMessage(code: String) = when (code) {
+        "taken" -> "Этот юзер уже занят, придумай другой"
+        "bad_username" -> "Юзер: 3–20 символов, латиница, цифры и _"
+        "bad_google" -> "Google-вход не подтверждён сервером"
+        "no_server" -> "Сервер не настроен в этой сборке"
+        "rate_limit" -> "Слишком много попыток, подожди минуту"
+        else -> "Ошибка сервера: $code"
+    }
+
+    private fun finishLogin(r: JSONObject) {
+        prefs().edit()
+            .putString("user", r.getString("username"))
+            .putString("token", r.getString("token"))
+            .putString("bot", r.optString("bot"))
+            .apply()
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(userInput.windowToken, 0)
+        userInput.setText("")
+        updateSubUi()
+        showScreen(mainScreen)
+        refreshStatus()
+    }
+
+    // ───────────────────────── настройки и диагностика ─────────────────────────
+
+    private fun openSettings() {
+        findViewById<TextView>(R.id.setUser).text = prefs().getString("user", "")
+        findViewById<TextView>(R.id.setSub).text = subSummary()
+        showScreen(settingsScreen)
+    }
+
+    private fun showDiag() {
+        val sb = StringBuilder("Состояние: $vpnState\nВерсия: ${BuildConfig.VERSION_NAME}\n")
+        VpnController.statsFn?.let { sb.append(it()).append('\n') }
+        sb.append("\n").append(VpnController.dump().ifEmpty { "(журнал пуст — сначала подключись)" })
+        val hev = runCatching { File(filesDir, "hev.log").readLines().takeLast(25) }.getOrDefault(emptyList())
+        if (hev.isNotEmpty()) sb.append("\n\n— туннель —\n").append(hev.joinToString("\n"))
+        val text = sb.toString()
+        val tv = TextView(this).apply {
+            this.text = text
+            textSize = 11f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(40, 24, 40, 24)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Диагностика")
+            .setView(ScrollView(this).apply { addView(tv) })
+            .setPositiveButton("Копировать") { _, _ ->
+                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("diag", text))
+                Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
     }
 
     // ───────────────────────── переключение экранов ─────────────────────────
 
-    private fun showMain(animated: Boolean) {
-        backCallback.isEnabled = false
-        swap(show = mainScreen, hide = keyScreen, animated = animated)
-    }
-
-    private fun showKeyScreen(animated: Boolean) {
-        val hasKey = savedKey() != null
-        keyCancel.visibility = if (hasKey) View.VISIBLE else View.GONE
-        backCallback.isEnabled = hasKey
-        keyError.visibility = View.GONE
-        swap(show = keyScreen, hide = mainScreen, animated = animated)
-    }
-
-    private fun swap(show: View, hide: View, animated: Boolean) {
-        if (!animated) {
-            hide.visibility = View.GONE
-            show.visibility = View.VISIBLE
-            show.alpha = 1f
-            return
+    private fun showScreen(target: View, animated: Boolean = true) {
+        backCallback.isEnabled = target === settingsScreen
+        for (v in listOf(mainScreen, loginScreen, settingsScreen)) {
+            if (v === target) continue
+            if (v.visibility == View.VISIBLE && animated) {
+                v.animate().alpha(0f).setDuration(160).withEndAction { v.visibility = View.GONE; v.alpha = 1f }.start()
+            } else {
+                v.visibility = View.GONE
+            }
         }
-        hide.animate().alpha(0f).setDuration(180).withEndAction {
-            hide.visibility = View.GONE
-            hide.alpha = 1f
-            show.alpha = 0f
-            show.visibility = View.VISIBLE
-            show.animate().alpha(1f).setDuration(240).start()
-        }.start()
+        target.alpha = if (animated) 0f else 1f
+        target.visibility = View.VISIBLE
+        if (animated) target.animate().alpha(1f).setStartDelay(120).setDuration(220).start()
     }
 }
