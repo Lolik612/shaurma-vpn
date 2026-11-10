@@ -91,7 +91,7 @@ class ShaurmaVpnService : VpnService() {
                 .put("method", key.method)
                 .put("local_address", "127.0.0.1")
                 .put("local_port", SOCKS_PORT)
-                .put("mode", "tcp_and_udp")
+                .put("mode", "tcp_only") // без UDP: меньше нагрузки на сервер, DNS идёт через TCP
                 .toString()
         )
         val bin = File(applicationInfo.nativeLibraryDir, "libsslocal.so")

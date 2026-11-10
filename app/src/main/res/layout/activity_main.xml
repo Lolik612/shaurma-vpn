@@ -18,7 +18,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/status_off"
-            android:textColor="#8A8AA3"
+            android:textColor="#BFA48E"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -28,7 +28,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:minHeight="22dp"
-            android:textColor="#6F6F8E"
+            android:textColor="#A88B75"
             android:textSize="15sp" />
 
         <Space
@@ -120,7 +120,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/location_label"
-                    android:textColor="#8A8AA3"
+                    android:textColor="#BFA48E"
                     android:textSize="13sp" />
 
                 <TextView
@@ -169,7 +169,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/key_title"
-                android:textColor="#FFFFFF"
+                android:textColor="#FFF1DC"
                 android:textSize="26sp"
                 android:textStyle="bold" />
 
@@ -179,7 +179,7 @@
                 android:layout_marginTop="8dp"
                 android:gravity="center"
                 android:text="@string/key_subtitle"
-                android:textColor="#8A8AA3"
+                android:textColor="#BFA48E"
                 android:textSize="15sp" />
 
             <EditText
@@ -196,7 +196,7 @@
                 android:minLines="4"
                 android:padding="16dp"
                 android:textColor="#FFFFFF"
-                android:textColorHint="#5A5A78"
+                android:textColorHint="#7A5C4B"
                 android:textSize="14sp" />
 
             <TextView
@@ -205,7 +205,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="@string/key_bad"
-                android:textColor="#FF7B7B"
+                android:textColor="#FF8A70"
                 android:textSize="13sp"
                 android:visibility="gone" />
 
@@ -220,7 +220,7 @@
                 android:foreground="?attr/selectableItemBackground"
                 android:gravity="center"
                 android:text="@string/key_paste"
-                android:textColor="#C9C3FF"
+                android:textColor="#FFD9A8"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
@@ -248,7 +248,7 @@
                 android:focusable="true"
                 android:padding="10dp"
                 android:text="@string/key_cancel"
-                android:textColor="#8A8AA3"
+                android:textColor="#BFA48E"
                 android:textSize="15sp"
                 android:visibility="gone" />
         </LinearLayout>

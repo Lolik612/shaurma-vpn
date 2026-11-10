@@ -10,14 +10,14 @@
 <br>
 
 <a href="https://github.com/Lolik612/shaurma-vpn/releases/latest/download/ShaurmaVPN.apk">
-  <img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK%20%D0%B4%D0%BB%D1%8F%20Android-7B6CF6?style=for-the-badge&logo=android&logoColor=white" alt="Скачать APK">
+  <img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-APK%20%D0%B4%D0%BB%D1%8F%20Android-E63B2E?style=for-the-badge&logo=android&logoColor=white" alt="Скачать APK">
 </a>
 
 <br><br>
 
 ![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
-![Shadowsocks](https://img.shields.io/badge/Shadowsocks-7B6CF6?style=flat-square)
-![Без рекламы](https://img.shields.io/badge/%D0%91%D0%B5%D0%B7-%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D1%8B-5B4BE0?style=flat-square)
+![Shadowsocks](https://img.shields.io/badge/Shadowsocks-E63B2E?style=flat-square)
+![Без рекламы](https://img.shields.io/badge/%D0%91%D0%B5%D0%B7-%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D1%8B-D62718?style=flat-square)
 
 </div>
 

@@ -1,8 +1,8 @@
 <resources>
     <style name="Theme.Shaurma" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@drawable/bg_gradient</item>
-        <item name="android:statusBarColor">#1E1B4B</item>
-        <item name="android:navigationBarColor">#05050A</item>
+        <item name="android:statusBarColor">#7A1D12</item>
+        <item name="android:navigationBarColor">#0E0605</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

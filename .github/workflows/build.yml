@@ -47,6 +47,9 @@ jobs:
       - name: Prepare APK
         run: cp app/build/outputs/apk/release/app-release.apk ShaurmaVPN.apk
 
+      - name: Release notes from CHANGELOG.md
+        run: awk '/^## /{n++} n==1 && !/^## /' CHANGELOG.md > notes.md
+
       - name: Publish release (APK only)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,4 +57,4 @@ jobs:
           gh release create "v${{ github.run_number }}" ShaurmaVPN.apk \
             --latest \
             --title "Шаурма VPN v${{ github.run_number }}" \
-            --notes "Скачай ShaurmaVPN.apk и установи на телефон."
+            --notes-file notes.md

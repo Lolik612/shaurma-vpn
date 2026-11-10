@@ -200,18 +200,18 @@ class MainActivity : AppCompatActivity() {
     private fun applyState(s: VpnController.State) {
         when (s) {
             VpnController.State.OFF -> {
-                setStatus(R.string.status_off, 0xFF8A8AA3.toInt())
+                setStatus(R.string.status_off, 0xFFBFA48E.toInt())
                 setActive(false)
                 stopSpin()
                 stopTimer()
             }
             VpnController.State.CONNECTING -> {
-                setStatus(R.string.status_connecting, 0xFFC9C3FF.toInt())
+                setStatus(R.string.status_connecting, 0xFFFFC477.toInt())
                 setActive(true)
                 startSpin()
             }
             VpnController.State.ON -> {
-                setStatus(R.string.status_on, 0xFF9D92FF.toInt())
+                setStatus(R.string.status_on, 0xFF9BE15D.toInt())
                 setActive(true)
                 startSpin()
                 startTimer()
