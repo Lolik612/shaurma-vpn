@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Шаурма VPN</string>
+    <string name="status_off">Нет связи</string>
+    <string name="status_connecting">Подключение…</string>
+    <string name="status_on">Подключено</string>
+    <string name="location_label">Выбранная локация</string>
+    <string name="location_name">DEFAULT - Auto</string>
+    <string name="config_title">Конфиг сервера</string>
+    <string name="config_hint">Вставь сюда содержимое client.conf</string>
+    <string name="save">Сохранить</string>
+    <string name="cancel">Отмена</string>
+    <string name="no_config">Сначала вставь конфиг: нажми на «Выбранная локация»</string>
+    <string name="bad_config">Конфиг не подходит: %s</string>
+    <string name="error">Ошибка: %s</string>
+</resources>
