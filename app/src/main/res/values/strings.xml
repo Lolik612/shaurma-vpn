@@ -5,11 +5,13 @@
     <string name="status_on">Подключено</string>
     <string name="location_label">Выбранная локация</string>
     <string name="location_name">DEFAULT - Auto</string>
-    <string name="config_title">Конфиг сервера</string>
-    <string name="config_hint">Вставь сюда содержимое client.conf</string>
-    <string name="save">Сохранить</string>
-    <string name="cancel">Отмена</string>
-    <string name="no_config">Сначала вставь конфиг: нажми на «Выбранная локация»</string>
-    <string name="bad_config">Конфиг не подходит: %s</string>
-    <string name="error">Ошибка: %s</string>
+    <string name="key_title">Добро пожаловать</string>
+    <string name="key_subtitle">Вставь свой ключ доступа, чтобы начать</string>
+    <string name="key_hint">shaurma://…</string>
+    <string name="key_paste">Вставить из буфера</string>
+    <string name="key_continue">Продолжить</string>
+    <string name="key_cancel">Отмена</string>
+    <string name="key_bad">Ключ не подходит. Проверь, что он скопирован целиком.</string>
+    <string name="key_empty">Буфер обмена пуст</string>
+    <string name="error">Не удалось подключиться: %s</string>
 </resources>

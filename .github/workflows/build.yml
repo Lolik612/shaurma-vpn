@@ -23,28 +23,17 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+      - name: Build signed APK
+        run: gradle assembleRelease --no-daemon
 
-      - name: Pack ZIP (APK + server script)
-        run: |
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ShaurmaVPN.apk
-          cp server/setup-server.sh dist/
-          cd dist && zip -r ../ShaurmaVPN.zip . && cd ..
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/release/app-release.apk ShaurmaVPN.apk
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ShaurmaVPN
-          path: |
-            ShaurmaVPN.zip
-            dist/ShaurmaVPN.apk
-
-      - name: Publish GitHub Release
+      - name: Publish release (APK only)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "build-${{ github.run_number }}" \
-            ShaurmaVPN.zip dist/ShaurmaVPN.apk \
-            --title "Шаурма VPN build ${{ github.run_number }}" \
-            --notes "Автосборка. APK для телефона и zip с APK и скриптом для сервера."
+          gh release create "v${{ github.run_number }}" ShaurmaVPN.apk \
+            --latest \
+            --title "Шаурма VPN v${{ github.run_number }}" \
+            --notes "Скачай ShaurmaVPN.apk и установи на телефон."

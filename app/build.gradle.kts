@@ -11,13 +11,24 @@ android {
         applicationId = "com.shaurma.vpn"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "1.0"
+    }
+
+    // Постоянный ключ подписи: каждая новая сборка ставится поверх старой без удаления приложения
+    signingConfigs {
+        create("shaurma") {
+            storeFile = file("shaurma.jks")
+            storePassword = "shaurma123"
+            keyAlias = "shaurma"
+            keyPassword = "shaurma123"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("shaurma")
         }
     }
 
