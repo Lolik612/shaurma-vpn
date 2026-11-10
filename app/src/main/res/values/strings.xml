@@ -7,7 +7,7 @@
     <string name="location_name">DEFAULT - Auto</string>
     <string name="key_title">Добро пожаловать</string>
     <string name="key_subtitle">Вставь свой ключ доступа, чтобы начать</string>
-    <string name="key_hint">shaurma://…</string>
+    <string name="key_hint">ss://…</string>
     <string name="key_paste">Вставить из буфера</string>
     <string name="key_continue">Продолжить</string>
     <string name="key_cancel">Отмена</string>

@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.app.Activity
+import android.content.Intent
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.VpnService
@@ -21,29 +22,15 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import com.wireguard.android.backend.GoBackend
-import com.wireguard.android.backend.Tunnel
-import com.wireguard.config.Config
-import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayInputStream
 
 class MainActivity : AppCompatActivity() {
-
-    private class ShaurmaTunnel : Tunnel {
-        override fun getName() = "shaurma"
-        override fun onStateChange(newState: Tunnel.State) {}
-    }
-
-    private enum class UiState { OFF, CONNECTING, ON }
-
-    private val tunnel = ShaurmaTunnel()
-    private val backend by lazy { GoBackend(applicationContext) }
 
     private lateinit var mainScreen: View
     private lateinit var keyScreen: View
@@ -65,8 +52,7 @@ class MainActivity : AppCompatActivity() {
     private var stopSpinAnim: ObjectAnimator? = null
     private var timerJob: Job? = null
 
-    private var state = UiState.OFF
-    private var busy = false
+    private val vpnState get() = VpnController.state.value
 
     private val backCallback = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() = showMain(animated = true)
@@ -74,7 +60,7 @@ class MainActivity : AppCompatActivity() {
 
     private val vpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) connect()
+            if (result.resultCode == Activity.RESULT_OK) startVpn()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,20 +85,24 @@ class MainActivity : AppCompatActivity() {
 
         buttonHolder.setOnClickListener { onToggle() }
         findViewById<View>(R.id.locationCard).setOnClickListener {
-            if (state == UiState.OFF) showKeyScreen(animated = true)
+            if (vpnState == VpnController.State.OFF) showKeyScreen(animated = true)
         }
         findViewById<View>(R.id.keyPaste).setOnClickListener { pasteFromClipboard() }
         findViewById<View>(R.id.keyContinue).setOnClickListener { submitKey() }
         keyCancel.setOnClickListener { showMain(animated = true) }
 
-        if (savedConfig() != null) showMain(animated = false) else showKeyScreen(animated = false)
+        if (savedKey() != null) showMain(animated = false) else showKeyScreen(animated = false)
 
-        // Подхватываем реальное состояние туннеля (если приложение перезапустили)
+        // Состояние VPN приходит от сервиса
         lifecycleScope.launch {
-            val up = withContext(Dispatchers.IO) {
-                runCatching { backend.getState(tunnel) == Tunnel.State.UP }.getOrDefault(false)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { VpnController.state.collect { applyState(it) } }
+                launch {
+                    VpnController.error.collect {
+                        Toast.makeText(this@MainActivity, getString(R.string.error, it), Toast.LENGTH_LONG).show()
+                    }
+                }
             }
-            if (up) applyState(UiState.ON) else applyState(UiState.OFF)
         }
     }
 
@@ -207,21 +197,20 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun applyState(s: UiState) {
-        state = s
+    private fun applyState(s: VpnController.State) {
         when (s) {
-            UiState.OFF -> {
+            VpnController.State.OFF -> {
                 setStatus(R.string.status_off, 0xFF8A8AA3.toInt())
                 setActive(false)
                 stopSpin()
                 stopTimer()
             }
-            UiState.CONNECTING -> {
+            VpnController.State.CONNECTING -> {
                 setStatus(R.string.status_connecting, 0xFFC9C3FF.toInt())
                 setActive(true)
                 startSpin()
             }
-            UiState.ON -> {
+            VpnController.State.ON -> {
                 setStatus(R.string.status_on, 0xFF9D92FF.toInt())
                 setActive(true)
                 startSpin()
@@ -232,7 +221,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startTimer() {
         timerJob?.cancel()
-        val since = System.currentTimeMillis()
+        val since = VpnController.connectedAt.takeIf { it > 0 } ?: System.currentTimeMillis()
         timerJob = lifecycleScope.launch {
             while (isActive) {
                 val sec = (System.currentTimeMillis() - since) / 1000
@@ -251,59 +240,28 @@ class MainActivity : AppCompatActivity() {
     // ───────────────────────── подключение ─────────────────────────
 
     private fun onToggle() {
-        if (busy) return
-        if (state == UiState.ON) {
-            disconnect()
+        if (vpnState != VpnController.State.OFF) {
+            startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_DISCONNECT))
             return
         }
-        if (savedConfig() == null) {
+        if (savedKey() == null) {
             showKeyScreen(animated = true)
             return
         }
         val intent = VpnService.prepare(this)
-        if (intent != null) vpnPermission.launch(intent) else connect()
+        if (intent != null) vpnPermission.launch(intent) else startVpn()
     }
 
-    private fun connect() {
-        val text = savedConfig() ?: return showKeyScreen(animated = true)
-        busy = true
-        applyState(UiState.CONNECTING)
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val config = Config.parse(ByteArrayInputStream(text.toByteArray()))
-                    backend.setState(tunnel, Tunnel.State.UP, config)
-                }
-                applyState(UiState.ON)
-            } catch (e: Exception) {
-                applyState(UiState.OFF)
-                val msg = e.message ?: e.javaClass.simpleName
-                Toast.makeText(this@MainActivity, getString(R.string.error, msg), Toast.LENGTH_LONG).show()
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    private fun disconnect() {
-        busy = true
-        lifecycleScope.launch {
-            try {
-                withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.DOWN, null) }
-            } catch (_: Exception) {
-            } finally {
-                applyState(UiState.OFF)
-                busy = false
-            }
-        }
+    private fun startVpn() {
+        startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_CONNECT))
     }
 
     // ───────────────────────── ключ доступа ─────────────────────────
 
     private fun prefs() = getSharedPreferences("vpn", MODE_PRIVATE)
 
-    private fun savedConfig(): String? =
-        prefs().getString("config", null)?.takeIf { it.isNotBlank() }
+    private fun savedKey(): String? =
+        prefs().getString("key", null)?.takeIf { it.isNotBlank() }
 
     private fun pasteFromClipboard() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -320,9 +278,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun submitKey() {
         try {
-            val config = KeyCodec.toConfig(keyInput.text.toString())
-            Config.parse(ByteArrayInputStream(config.toByteArray()))
-            prefs().edit().putString("config", config).apply()
+            val key = keyInput.text.toString().trim()
+            KeyCodec.parse(key)
+            prefs().edit().putString("key", key).apply()
             keyError.visibility = View.GONE
             keyInput.setText("")
             hideKeyboard()
@@ -345,7 +303,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showKeyScreen(animated: Boolean) {
-        val hasKey = savedConfig() != null
+        val hasKey = savedKey() != null
         keyCancel.visibility = if (hasKey) View.VISIBLE else View.GONE
         backCallback.isEnabled = hasKey
         keyError.visibility = View.GONE

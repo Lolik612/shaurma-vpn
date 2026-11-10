@@ -23,6 +23,24 @@ jobs:
         with:
           gradle-version: 8.7
 
+      - name: Fetch Shadowsocks client (sslocal, arm64)
+        run: |
+          mkdir -p /tmp/ss app/src/main/jniLibs/arm64-v8a
+          curl -fsSL -o /tmp/ss/ss.tar.xz \
+            https://github.com/shadowsocks/shadowsocks-rust/releases/download/v1.25.0/shadowsocks-v1.25.0.aarch64-linux-android.tar.xz
+          tar -xJf /tmp/ss/ss.tar.xz -C /tmp/ss
+          SSLOCAL="$(find /tmp/ss -type f -name sslocal | head -n1)"
+          test -n "$SSLOCAL"
+          cp "$SSLOCAL" app/src/main/jniLibs/arm64-v8a/libsslocal.so
+
+      - name: Build native tunnel (hev-socks5-tunnel)
+        run: |
+          NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-$ANDROID_NDK_LATEST_HOME}}"
+          mkdir -p /tmp/hev && cd /tmp/hev
+          git clone --recursive https://github.com/heiher/hev-socks5-tunnel jni
+          "$NDK/ndk-build" APP_ABI=arm64-v8a APP_PLATFORM=android-24
+          cp libs/arm64-v8a/libhev-socks5-tunnel.so "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/"
+
       - name: Build signed APK
         run: gradle assembleRelease --no-daemon
 

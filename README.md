@@ -16,7 +16,7 @@
 <br><br>
 
 ![Android](https://img.shields.io/badge/Android-7.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)
-![WireGuard](https://img.shields.io/badge/WireGuard-88171A?style=flat-square&logo=wireguard&logoColor=white)
+![Shadowsocks](https://img.shields.io/badge/Shadowsocks-7B6CF6?style=flat-square)
 ![Без рекламы](https://img.shields.io/badge/%D0%91%D0%B5%D0%B7-%D1%80%D0%B5%D0%BA%D0%BB%D0%B0%D0%BC%D1%8B-5B4BE0?style=flat-square)
 
 </div>
@@ -27,7 +27,7 @@
 
 | | |
 |---|---|
-| ⚡ **Быстро** | Современный протокол WireGuard — минимум задержек и расхода батареи |
+| ⚡ **Быстро** | Лёгкий протокол Shadowsocks — минимум задержек и расхода батареи |
 | 🔒 **Безопасно** | Весь трафик шифруется, личные данные остаются при тебе |
 | 🌯 **Просто** | Одна кнопка. Шаурма крутится — значит, защита работает |
 | 🚫 **Без рекламы** | Никаких баннеров, регистраций и подписок |
@@ -44,7 +44,7 @@
 <details>
 <summary><b>Где взять ключ?</b></summary>
 
-Ключ — это строка вида `shaurma://…`. Его выдаёт владелец сервиса.
+Ключ — это строка вида `ss://…`. Его выдаёт владелец сервиса.
 
 </details>
 
