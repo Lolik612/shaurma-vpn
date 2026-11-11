@@ -56,6 +56,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # в репозитории остаётся только свежий релиз: старые удаляем вместе с тегами
+          for t in $(gh release list --limit 200 --json tagName --jq '.[].tagName'); do
+            gh release delete "$t" --cleanup-tag --yes || true
+          done
+          for t in $(git ls-remote --tags origin | awk '{print $2}' | sed 's|refs/tags/||;s|\^{}||' | sort -u); do
+            git push origin ":refs/tags/$t" || true
+          done
           gh release create "v${{ github.run_number }}" ShaurmaVPN.apk \
             --latest \
             --title "Шаурма VPN v${{ github.run_number }}" \
