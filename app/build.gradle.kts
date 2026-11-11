@@ -14,7 +14,7 @@ android {
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "1.0"
 
-        buildConfigField("String", "API_URL", "\"${System.getenv("API_URL")?.takeIf { it.isNotBlank() } ?: "http://shawerma.wisp.uno:13666"}\"")
+        buildConfigField("String", "API_URL", "\"${System.getenv("API_URL")?.takeIf { it.isNotBlank() } ?: "http://78.154.103.10:13666"}\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
