@@ -50,19 +50,9 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Добро пожаловать" android:textColor="#FFF1DC" android:textSize="26sp" android:textStyle="bold" />
             <TextView android:id="@+id/loginSub" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center"
                 android:text="Войди, чтобы начать" android:textColor="#BFA48E" android:textSize="15sp" />
-            <TextView android:id="@+id/btnGoogle" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="28dp"
-                android:background="@drawable/btn_primary" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
-                android:gravity="center" android:text="Войти через Google" android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold" />
-            <LinearLayout android:id="@+id/userBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="24dp" android:gravity="start"
-                android:text="Придумай юзер — это твой аккаунт в сети Шаурма VPN. Его нужно будет указать в боте при покупке." android:textColor="#BFA48E" android:textSize="14sp" android:textStyle="normal" />
-                <EditText android:id="@+id/userInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp"
-                    android:background="@drawable/input_bg" android:hint="например, shawarma_fan" android:importantForAutofill="no" android:inputType="textNoSuggestions"
-                    android:maxLength="20" android:padding="16dp" android:singleLine="true" android:textColor="#FFF1DC" android:textColorHint="#7A5C4B" android:textSize="16sp" />
-            <TextView android:id="@+id/btnUser" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="14dp"
-                android:background="@drawable/btn_primary" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
-                android:gravity="center" android:text="Продолжить" android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold" />
-            </LinearLayout>
+            <TextView android:id="@+id/btnTelegram" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="28dp"
+                android:background="@drawable/btn_telegram" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
+                android:gravity="center" android:text="Войти через Telegram" android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold" />
             <TextView android:id="@+id/loginError" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"
                 android:gravity="center" android:textColor="#FF8A70" android:textSize="13sp" android:visibility="gone" />
         </LinearLayout>

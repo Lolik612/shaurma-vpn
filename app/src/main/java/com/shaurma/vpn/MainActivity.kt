@@ -16,8 +16,6 @@ import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
@@ -26,15 +24,9 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -60,9 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ringOn: View
     private lateinit var pulse1: View
     private lateinit var pulse2: View
-    private lateinit var btnGoogle: View
-    private lateinit var userBox: View
-    private lateinit var userInput: EditText
+    private lateinit var btnTelegram: TextView
     private lateinit var loginError: TextView
     private lateinit var loginSub: TextView
 
@@ -73,7 +63,7 @@ class MainActivity : AppCompatActivity() {
     private var stopSpinAnim: ObjectAnimator? = null
     private var timerJob: Job? = null
 
-    private var pendingIdToken: String? = null
+    private var loginJob: Job? = null
     private var fetching = false
 
     private val vpnState get() = VpnController.state.value
@@ -102,9 +92,7 @@ class MainActivity : AppCompatActivity() {
         ringOn = findViewById(R.id.ringOn)
         pulse1 = findViewById(R.id.pulse1)
         pulse2 = findViewById(R.id.pulse2)
-        btnGoogle = findViewById(R.id.btnGoogle)
-        userBox = findViewById(R.id.userBox)
-        userInput = findViewById(R.id.userInput)
+        btnTelegram = findViewById(R.id.btnTelegram)
         loginError = findViewById(R.id.loginError)
         loginSub = findViewById(R.id.loginSub)
 
@@ -114,8 +102,7 @@ class MainActivity : AppCompatActivity() {
         buttonHolder.setOnClickListener { onToggle() }
         findViewById<View>(R.id.gear).setOnClickListener { openSettings() }
         findViewById<View>(R.id.subCard).setOnClickListener { openSettings() }
-        btnGoogle.setOnClickListener { doGoogle() }
-        findViewById<View>(R.id.btnUser).setOnClickListener { doRegister() }
+        btnTelegram.setOnClickListener { doTelegram() }
         findViewById<View>(R.id.setBuy).setOnClickListener { openBot() }
         findViewById<View>(R.id.setDiag).setOnClickListener { showDiag() }
         findViewById<View>(R.id.setLogout).setOnClickListener { logout() }
@@ -389,17 +376,16 @@ class MainActivity : AppCompatActivity() {
     private fun logout() {
         startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_DISCONNECT))
         prefs().edit().clear().apply()
-        pendingIdToken = null
+        loginJob?.cancel()
         prepareLogin()
         showScreen(loginScreen)
     }
 
     private fun prepareLogin() {
         loginError.visibility = View.GONE
-        val google = BuildConfig.GOOGLE_CLIENT_ID.isNotBlank()
-        btnGoogle.visibility = if (google) View.VISIBLE else View.GONE
-        userBox.visibility = if (google) View.GONE else View.VISIBLE
-        loginSub.text = if (google) "Войди через Google, чтобы начать" else "Создай аккаунт, чтобы начать"
+        btnTelegram.isEnabled = true
+        btnTelegram.text = "Войти через Telegram"
+        loginSub.text = "Войди через Telegram — подписка и покупки привязаны к твоему аккаунту"
         if (BuildConfig.API_URL.isBlank()) showLoginError("Сервер не настроен в этой сборке")
     }
 
@@ -408,63 +394,58 @@ class MainActivity : AppCompatActivity() {
         loginError.visibility = View.VISIBLE
     }
 
-    private fun doGoogle() {
+    private fun doTelegram() {
         loginError.visibility = View.GONE
-        lifecycleScope.launch {
+        loginJob?.cancel()
+        btnTelegram.isEnabled = false
+        btnTelegram.text = "Подключаюсь…"
+        loginJob = lifecycleScope.launch {
             try {
-                val token = googleSignIn()
-                pendingIdToken = token
-                val r = withContext(Dispatchers.IO) { Api.post("/api/login", JSONObject().put("id_token", token)) }
-                when {
-                    r.optBoolean("ok") -> finishLogin(r)
-                    r.optString("error") == "need_username" -> {
-                        btnGoogle.visibility = View.GONE
-                        userBox.visibility = View.VISIBLE
-                        loginSub.text = "Google подтверждён. Осталось придумать юзер"
-                    }
-                    else -> showLoginError(loginMessage(r.optString("error")))
+                val st = withContext(Dispatchers.IO) { Api.post("/api/tg_start", JSONObject()) }
+                if (!st.optBoolean("ok")) {
+                    showLoginError(loginMessage(st.optString("error")))
+                    prepareLogin()
+                    return@launch
                 }
-            } catch (_: GetCredentialCancellationException) {
+                val code = st.getString("code")
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(st.getString("link"))))
+                } catch (_: Exception) {
+                    showLoginError("Не удалось открыть Telegram. Установи его и попробуй снова")
+                    prepareLogin()
+                    return@launch
+                }
+                btnTelegram.text = "Жду подтверждения в Telegram…"
+                loginSub.text = "Нажми «Запустить» в боте и вернись сюда"
+                repeat(200) {
+                    delay(1500)
+                    val r = withContext(Dispatchers.IO) {
+                        runCatching { Api.post("/api/tg_poll", JSONObject().put("code", code)) }.getOrNull()
+                    } ?: return@repeat
+                    when {
+                        r.optBoolean("ok") && !r.optBoolean("pending") -> {
+                            finishLogin(r)
+                            return@launch
+                        }
+                        !r.optBoolean("ok") -> {
+                            showLoginError("Ссылка устарела, нажми кнопку ещё раз")
+                            prepareLogin()
+                            return@launch
+                        }
+                    }
+                }
+                showLoginError("Не дождались подтверждения, попробуй ещё раз")
+                prepareLogin()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                showLoginError("Не удалось войти: ${e.message ?: e.javaClass.simpleName}")
-            }
-        }
-    }
-
-    private suspend fun googleSignIn(): String {
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_CLIENT_ID).build())
-            .build()
-        val c = CredentialManager.create(this).getCredential(this, request).credential
-        if (c is CustomCredential && c.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-            return GoogleIdTokenCredential.createFrom(c.data).idToken
-        }
-        throw IllegalStateException("Google не вернул токен")
-    }
-
-    private fun doRegister() {
-        loginError.visibility = View.GONE
-        val name = userInput.text.toString().trim()
-        if (!Regex("^[A-Za-z0-9_]{3,20}$").matches(name)) {
-            showLoginError(loginMessage("bad_username"))
-            return
-        }
-        val body = JSONObject().put("username", name)
-        pendingIdToken?.let { body.put("id_token", it) }
-        lifecycleScope.launch {
-            try {
-                val r = withContext(Dispatchers.IO) { Api.post("/api/register", body) }
-                if (r.optBoolean("ok")) finishLogin(r) else showLoginError(loginMessage(r.optString("error")))
-            } catch (e: Exception) {
-                showLoginError("Нет связи с сервером (${e.javaClass.simpleName}). Проверь интернет и адрес сервера")
+                showLoginError("Нет связи с сервером (${e.javaClass.simpleName}). Проверь интернет")
+                prepareLogin()
             }
         }
     }
 
     private fun loginMessage(code: String) = when (code) {
-        "taken" -> "Этот юзер уже занят, придумай другой"
-        "bad_username" -> "Юзер: 3–20 символов, латиница, цифры и _"
-        "bad_google" -> "Google-вход не подтверждён сервером"
         "no_server" -> "Сервер не настроен в этой сборке"
         "rate_limit" -> "Слишком много попыток, подожди минуту"
         else -> "Ошибка сервера: $code"
@@ -476,8 +457,6 @@ class MainActivity : AppCompatActivity() {
             .putString("token", r.getString("token"))
             .putString("bot", r.optString("bot"))
             .apply()
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(userInput.windowToken, 0)
-        userInput.setText("")
         updateSubUi()
         showScreen(mainScreen)
         refreshStatus()

@@ -44,7 +44,6 @@ jobs:
       - name: Build signed APK
         env:
           API_URL: ${{ vars.API_URL }}
-          GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
         run: gradle assembleRelease --no-daemon
 
       - name: Prepare APK

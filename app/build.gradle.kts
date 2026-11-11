@@ -14,8 +14,7 @@ android {
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "1.0"
 
-        buildConfigField("String", "API_URL", "\"${System.getenv("API_URL") ?: ""}\"")
-        buildConfigField("String", "GOOGLE_CLIENT_ID", "\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\"")
+        buildConfigField("String", "API_URL", "\"${System.getenv("API_URL")?.takeIf { it.isNotBlank() } ?: "http://shawerma.wisp.uno:13666"}\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -60,9 +59,6 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.credentials:credentials:1.3.0")
-    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
-    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
