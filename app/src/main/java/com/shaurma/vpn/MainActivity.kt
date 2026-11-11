@@ -53,6 +53,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pulse1: View
     private lateinit var pulse2: View
     private lateinit var btnTelegram: TextView
+    private lateinit var loginCode: TextView
+    private var loginLink: String? = null
     private lateinit var loginError: TextView
     private lateinit var loginSub: TextView
 
@@ -97,6 +99,7 @@ class MainActivity : AppCompatActivity() {
         pulse1 = findViewById(R.id.pulse1)
         pulse2 = findViewById(R.id.pulse2)
         btnTelegram = findViewById(R.id.btnTelegram)
+        loginCode = findViewById(R.id.loginCode)
         loginError = findViewById(R.id.loginError)
         loginSub = findViewById(R.id.loginSub)
 
@@ -106,7 +109,18 @@ class MainActivity : AppCompatActivity() {
         buttonHolder.setOnClickListener { onToggle() }
         findViewById<View>(R.id.gear).setOnClickListener { openSettings() }
         findViewById<View>(R.id.subCard).setOnClickListener { openSettings() }
-        btnTelegram.setOnClickListener { doTelegram() }
+        btnTelegram.setOnClickListener {
+            val link = loginLink
+            if (link != null) {
+                runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
+                    .onFailure { showLoginError("Не удалось открыть Telegram. Отправь код боту вручную") }
+            } else doTelegram()
+        }
+        loginCode.setOnClickListener {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("code", loginCode.text.toString().replace(" ", "")))
+            Toast.makeText(this, "Код скопирован", Toast.LENGTH_SHORT).show()
+        }
         findViewById<View>(R.id.setBuy).setOnClickListener { openBot() }
         findViewById<View>(R.id.setDiag).setOnClickListener { showDiag() }
         findViewById<View>(R.id.setLogout).setOnClickListener { logout() }
@@ -389,7 +403,9 @@ class MainActivity : AppCompatActivity() {
         loginError.visibility = View.GONE
         btnTelegram.isEnabled = true
         btnTelegram.text = "Войти через Telegram"
-        loginSub.text = "Войди через Telegram — подписка и покупки привязаны к твоему аккаунту"
+        loginLink = null
+        loginCode.visibility = View.GONE
+        loginSub.text = "Получи код и отправь его нашему боту — аккаунт привяжется, подписка и покупки будут на нём"
         if (BuildConfig.API_URL.isBlank()) showLoginError("Сервер не настроен в этой сборке")
     }
 
@@ -412,15 +428,12 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 val code = st.getString("code")
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(st.getString("link"))))
-                } catch (_: Exception) {
-                    showLoginError("Не удалось открыть Telegram. Установи его и попробуй снова")
-                    prepareLogin()
-                    return@launch
-                }
-                btnTelegram.text = "Жду подтверждения в Telegram…"
-                loginSub.text = "Нажми «Запустить» в боте и вернись сюда"
+                loginLink = st.optString("link").ifEmpty { null }
+                loginCode.text = code.chunked(4).joinToString(" ")
+                loginCode.visibility = View.VISIBLE
+                btnTelegram.isEnabled = true
+                btnTelegram.text = "Открыть бота"
+                loginSub.text = "Отправь этот код боту @${st.optString("bot")} (кнопка «Войти в приложение») или просто нажми «Открыть бота». Приложение войдёт само"
                 repeat(200) {
                     delay(1500)
                     val r = withContext(Dispatchers.IO) {

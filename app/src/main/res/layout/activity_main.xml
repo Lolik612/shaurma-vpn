@@ -50,6 +50,9 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Добро пожаловать" android:textColor="#FFF1DC" android:textSize="26sp" android:textStyle="bold" />
             <TextView android:id="@+id/loginSub" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center"
                 android:text="Войди, чтобы начать" android:textColor="#BFA48E" android:textSize="15sp" />
+            <TextView android:id="@+id/loginCode" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="22dp"
+                android:background="@drawable/input_bg" android:clickable="true" android:focusable="true" android:gravity="center" android:letterSpacing="0.18" android:paddingTop="18dp" android:paddingBottom="18dp"
+                android:text="" android:textColor="#FFF1DC" android:textSize="34sp" android:textStyle="bold" android:visibility="gone" />
             <TextView android:id="@+id/btnTelegram" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="28dp"
                 android:background="@drawable/btn_telegram" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
                 android:gravity="center" android:text="Войти через Telegram" android:textColor="#FFFFFF" android:textSize="17sp" android:textStyle="bold" />
