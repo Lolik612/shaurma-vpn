@@ -123,6 +123,14 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.setBuy).setOnClickListener { openBot() }
         findViewById<View>(R.id.setDiag).setOnClickListener { showDiag() }
+        findViewById<TextView>(R.id.setMode).setOnClickListener {
+            val tg = prefs().getString("mode", "all") != "tg"
+            prefs().edit().putString("mode", if (tg) "tg" else "all").apply()
+            updateModeText()
+            if (vpnState != VpnController.State.OFF) {
+                Toast.makeText(this, "Переподключи VPN, чтобы режим применился", Toast.LENGTH_LONG).show()
+            }
+        }
         findViewById<View>(R.id.setLogout).setOnClickListener { logout() }
         findViewById<View>(R.id.setBack).setOnClickListener { showScreen(mainScreen) }
 
@@ -481,7 +489,13 @@ class MainActivity : AppCompatActivity() {
 
     // ───────────────────────── настройки и диагностика ─────────────────────────
 
+    private fun updateModeText() {
+        findViewById<TextView>(R.id.setMode).text =
+            if (prefs().getString("mode", "all") == "tg") "Режим: только Telegram" else "Режим: все приложения"
+    }
+
     private fun openSettings() {
+        updateModeText()
         findViewById<TextView>(R.id.setUser).text = prefs().getString("user", "")
         findViewById<TextView>(R.id.setSub).text = subSummary()
         showScreen(settingsScreen)

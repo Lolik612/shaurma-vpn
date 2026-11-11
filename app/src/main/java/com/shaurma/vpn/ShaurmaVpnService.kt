@@ -144,9 +144,30 @@ class ShaurmaVpnService : VpnService() {
             .setMtu(1500)
             .addAddress("198.18.0.1", 32)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer("198.18.0.2") // DNS через прокси (mapdns в hev)
-            .addDnsServer("1.1.1.1")
-        runCatching { builder.addDisallowedApplication(packageName) }
+            // IPv6 заворачиваем в туннель, где он отбрасывается: иначе приложения (Telegram в первую очередь)
+            // ходят по IPv6 мимо VPN, а так быстро переключаются на IPv4 через прокси
+            .addAddress("fd00:198:18::1", 128)
+            .addRoute("::", 0)
+            .addDnsServer("198.18.0.2") // только DNS через прокси (mapdns в hev): запасной DNS UDP не пропустит
+        val prefs = getSharedPreferences("vpn", MODE_PRIVATE)
+        var onlyTelegram = prefs.getString("mode", "all") == "tg"
+        if (onlyTelegram) {
+            val pkgs = listOf(
+                "org.telegram.messenger", "org.telegram.messenger.web", "org.telegram.plus",
+                "org.thunderdog.challegram", "nekox.messenger", "tw.nekomimi.nekogram", "uz.unnarsx.cherrygram"
+            )
+            var added = 0
+            for (pkg in pkgs) {
+                try {
+                    builder.addAllowedApplication(pkg)
+                    added++
+                } catch (_: Exception) {
+                }
+            }
+            VpnController.log("режим «только Telegram»: приложений в VPN — $added")
+            if (added == 0) onlyTelegram = false
+        }
+        if (!onlyTelegram) runCatching { builder.addDisallowedApplication(packageName) }
         val pfd = builder.establish() ?: throw IOException("не удалось создать VPN-интерфейс")
         synchronized(lock) { tun = pfd }
         if (stopping) {
