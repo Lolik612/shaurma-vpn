@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 applyState(vpnState)
-                Toast.makeText(this@MainActivity, "Нет связи с сервером. Проверь интернет", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "Нет связи с сервером (${e.javaClass.simpleName}). Проверь интернет", Toast.LENGTH_LONG).show()
             } finally {
                 fetching = false
             }
@@ -456,7 +456,7 @@ class MainActivity : AppCompatActivity() {
                 val r = withContext(Dispatchers.IO) { Api.post("/api/register", body) }
                 if (r.optBoolean("ok")) finishLogin(r) else showLoginError(loginMessage(r.optString("error")))
             } catch (e: Exception) {
-                showLoginError("Нет связи с сервером. Проверь интернет")
+                showLoginError("Нет связи с сервером (${e.javaClass.simpleName}). Проверь интернет и адрес сервера")
             }
         }
     }
