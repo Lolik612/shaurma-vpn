@@ -177,7 +177,9 @@ class ShaurmaVpnService : VpnService() {
               log-level: info
             """.trimIndent()
         )
-        TProxyService.TProxyStartService(hevCfg.absolutePath, pfd.fd)
+        if (!TProxyService.TProxyStartService(hevCfg.absolutePath, pfd.fd)) {
+            throw IOException("не запустился туннель")
+        }
         synchronized(lock) { tunnelStarted = true }
         VpnController.statsFn = { stats() }
         VpnController.log("туннель запущен")
