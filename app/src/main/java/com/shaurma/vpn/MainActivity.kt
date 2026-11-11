@@ -423,7 +423,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val st = withContext(Dispatchers.IO) { Api.post("/api/tg_start", JSONObject()) }
                 if (!st.optBoolean("ok")) {
-                    showLoginError(loginMessage(st.optString("error")))
+                    showLoginError(loginMessage(st.optString("error")) + "\nАдрес: ${BuildConfig.API_URL}")
                     prepareLogin()
                     return@launch
                 }
@@ -456,7 +456,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                showLoginError("Нет связи с сервером (${e.javaClass.simpleName}). Проверь интернет")
+                showLoginError("Нет связи с сервером: ${e.javaClass.simpleName} ${e.message ?: ""}".trim() + "\nАдрес: ${BuildConfig.API_URL}")
                 prepareLogin()
             }
         }
