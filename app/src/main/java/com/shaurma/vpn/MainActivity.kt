@@ -75,6 +75,10 @@ class MainActivity : AppCompatActivity() {
     private val vpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) startVpn()
+            else {
+                applyState(vpnState)
+                Toast.makeText(this, "Нужно разрешить VPN-подключение", Toast.LENGTH_LONG).show()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {

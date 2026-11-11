@@ -58,15 +58,26 @@ class ShaurmaVpnService : VpnService() {
         if (VpnController.state.value != VpnController.State.OFF) return
         stopping = false
         VpnController.state.value = VpnController.State.CONNECTING
+        VpnController.log("нажато подключение")
         Thread({
             try {
                 doConnect()
-            } catch (e: Exception) {
+            } catch (e: Throwable) { // в т.ч. UnsatisfiedLinkError: иначе кнопка зависла бы на «Подключаюсь»
                 Log.e(TAG, "connect failed", e)
+                VpnController.log("ошибка: ${e.javaClass.simpleName}: ${e.message}")
                 if (!stopping) VpnController.error.tryEmit(e.message ?: e.javaClass.simpleName)
                 teardown()
             }
         }, "shaurma-connect").start()
+        // Страховка: если подключение зависло, не висим вечно
+        Thread({
+            Thread.sleep(45000)
+            if (!stopping && VpnController.state.value == VpnController.State.CONNECTING) {
+                VpnController.log("таймаут подключения 45 с")
+                VpnController.error.tryEmit("не удалось подключиться за 45 секунд. Открой «Диагностику» в настройках")
+                teardown()
+            }
+        }, "shaurma-timeout").apply { isDaemon = true }.start()
     }
 
     private fun doConnect() {
@@ -74,6 +85,7 @@ class ShaurmaVpnService : VpnService() {
             ?: throw IOException("Ключ не задан")
         val key = KeyCodec.parse(raw)
         VpnController.log("старт: метод ${key.method}")
+        VpnController.log("проверяю сервер…")
 
         // 1. Сервер вообще отвечает?
         try {
@@ -165,9 +177,7 @@ class ShaurmaVpnService : VpnService() {
               log-level: info
             """.trimIndent()
         )
-        if (!TProxyService.TProxyStartService(hevCfg.absolutePath, pfd.fd)) {
-            throw IOException("не запустился туннель")
-        }
+        TProxyService.TProxyStartService(hevCfg.absolutePath, pfd.fd)
         synchronized(lock) { tunnelStarted = true }
         VpnController.statsFn = { stats() }
         VpnController.log("туннель запущен")
