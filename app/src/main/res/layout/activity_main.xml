@@ -82,9 +82,9 @@
             <TextView android:id="@+id/setMode" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="12dp"
                 android:background="@drawable/btn_secondary" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
                 android:gravity="center" android:text="Режим: все приложения" android:textColor="#FFD9A8" android:textSize="16sp" android:textStyle="bold" />
-            <TextView android:id="@+id/setDiag" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="12dp"
+            <TextView android:id="@+id/setDns" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="12dp"
                 android:background="@drawable/btn_secondary" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
-                android:gravity="center" android:text="Диагностика" android:textColor="#FFD9A8" android:textSize="16sp" android:textStyle="bold" />
+                android:gravity="center" android:text="DNS-сервер" android:textColor="#FFD9A8" android:textSize="16sp" android:textStyle="bold" />
             <TextView android:id="@+id/setLogout" android:layout_width="match_parent" android:layout_height="54dp" android:layout_marginTop="12dp"
                 android:background="@drawable/btn_secondary" android:clickable="true" android:focusable="true" android:foreground="?attr/selectableItemBackground"
                 android:gravity="center" android:text="Выйти из аккаунта" android:textColor="#FFD9A8" android:textSize="16sp" android:textStyle="bold" />

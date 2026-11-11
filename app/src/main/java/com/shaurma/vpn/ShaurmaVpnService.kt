@@ -74,13 +74,18 @@ class ShaurmaVpnService : VpnService() {
             Thread.sleep(45000)
             if (!stopping && VpnController.state.value == VpnController.State.CONNECTING) {
                 VpnController.log("таймаут подключения 45 с")
-                VpnController.error.tryEmit("не удалось подключиться за 45 секунд. Открой «Диагностику» в настройках")
+                VpnController.error.tryEmit("не удалось подключиться за 45 секунд.")
                 teardown()
             }
         }, "shaurma-timeout").apply { isDaemon = true }.start()
     }
 
     private fun doConnect() {
+        val prefs0 = getSharedPreferences("vpn", MODE_PRIVATE)
+        if (prefs0.getString("mode", "all") == "dns") {
+            doDns(prefs0)
+            return
+        }
         val raw = getSharedPreferences("vpn", MODE_PRIVATE).getString("key", null)
             ?: throw IOException("Ключ не задан")
         val key = KeyCodec.parse(raw)
@@ -223,6 +228,124 @@ class ShaurmaVpnService : VpnService() {
 
         VpnController.connectedAt = System.currentTimeMillis()
         VpnController.state.value = VpnController.State.ON
+    }
+
+    // ───────────── режим DNS: через туннель идут только DNS-запросы ─────────────
+
+    private fun dnsEndpoint(prefs: android.content.SharedPreferences): String = when (prefs.getString("dns", "comss")) {
+        "comss" -> "https://dns.comss.one/dns-query"
+        "cf" -> "https://cloudflare-dns.com/dns-query"
+        "google" -> "https://dns.google/dns-query"
+        else -> prefs.getString("dns_custom", "")?.trim().orEmpty()
+    }
+
+    private fun doDns(prefs: android.content.SharedPreferences) {
+        val endpoint = dnsEndpoint(prefs)
+        if (endpoint.isEmpty()) throw IOException("DNS-сервер не задан")
+        val pfd = Builder()
+            .setSession("Шаурма VPN")
+            .setMtu(1500)
+            .addAddress("198.18.0.1", 32)
+            .addRoute("198.18.0.53", 32)
+            .addDnsServer("198.18.0.53")
+            .apply { runCatching { addDisallowedApplication(packageName) } }
+            .establish() ?: throw IOException("не удалось создать VPN-интерфейс")
+        synchronized(lock) { tun = pfd }
+        if (stopping) {
+            runCatching { pfd.close() }
+            return
+        }
+        VpnController.connectedAt = System.currentTimeMillis()
+        VpnController.state.value = VpnController.State.ON
+        Thread({ dnsLoop(pfd, endpoint) }, "shaurma-dns").start()
+    }
+
+    private fun dnsLoop(pfd: ParcelFileDescriptor, endpoint: String) {
+        val input = java.io.FileInputStream(pfd.fileDescriptor)
+        val output = java.io.FileOutputStream(pfd.fileDescriptor)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(6)
+        val buf = ByteArray(32767)
+        try {
+            while (!stopping) {
+                val n = input.read(buf)
+                if (n < 0) break
+                if (n < 28 || (buf[0].toInt() shr 4) != 4) continue
+                val ihl = (buf[0].toInt() and 15) * 4
+                if (buf[9].toInt() != 17 || n < ihl + 8) continue
+                val dport = ((buf[ihl + 2].toInt() and 0xFF) shl 8) or (buf[ihl + 3].toInt() and 0xFF)
+                if (dport != 53) continue
+                val pkt = buf.copyOf(n)
+                pool.execute {
+                    try {
+                        val ulen = ((pkt[ihl + 4].toInt() and 0xFF) shl 8) or (pkt[ihl + 5].toInt() and 0xFF)
+                        val query = pkt.copyOfRange(ihl + 8, minOf(pkt.size, ihl + ulen))
+                        val answer = resolveDns(query, endpoint) ?: return@execute
+                        val reply = buildUdpReply(pkt, ihl, answer)
+                        synchronized(output) { output.write(reply) }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        } catch (_: IOException) {
+        } finally {
+            pool.shutdownNow()
+            if (!stopping) {
+                VpnController.error.tryEmit("соединение прервано")
+                teardown()
+            }
+        }
+    }
+
+    private fun resolveDns(query: ByteArray, endpoint: String): ByteArray? {
+        if (endpoint.startsWith("https://")) {
+            val c = java.net.URL(endpoint).openConnection() as java.net.HttpURLConnection
+            try {
+                c.requestMethod = "POST"
+                c.connectTimeout = 4000
+                c.readTimeout = 4000
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/dns-message")
+                c.setRequestProperty("Accept", "application/dns-message")
+                c.outputStream.use { it.write(query) }
+                if (c.responseCode != 200) return null
+                return c.inputStream.use { it.readBytes() }
+            } finally {
+                c.disconnect()
+            }
+        }
+        val host = endpoint.substringBefore(":")
+        val port = endpoint.substringAfter(":", "53").toIntOrNull() ?: 53
+        java.net.DatagramSocket().use { s ->
+            protect(s)
+            s.soTimeout = 3000
+            s.send(java.net.DatagramPacket(query, query.size, java.net.InetAddress.getByName(host), port))
+            val r = ByteArray(4096)
+            val p = java.net.DatagramPacket(r, r.size)
+            s.receive(p)
+            return r.copyOf(p.length)
+        }
+    }
+
+    /** Собираем IPv4/UDP-ответ: адреса и порты меняем местами. */
+    private fun buildUdpReply(req: ByteArray, ihl: Int, payload: ByteArray): ByteArray {
+        val total = 28 + payload.size
+        val o = ByteArray(total)
+        o[0] = 0x45
+        o[2] = (total shr 8).toByte(); o[3] = total.toByte()
+        o[8] = 64; o[9] = 17
+        System.arraycopy(req, 16, o, 12, 4) // источник ответа = куда слали запрос
+        System.arraycopy(req, 12, o, 16, 4)
+        var sum = 0
+        for (i in 0 until 20 step 2) sum += ((o[i].toInt() and 0xFF) shl 8) or (o[i + 1].toInt() and 0xFF)
+        while (sum shr 16 != 0) sum = (sum and 0xFFFF) + (sum shr 16)
+        val ck = sum.inv() and 0xFFFF
+        o[10] = (ck shr 8).toByte(); o[11] = ck.toByte()
+        o[20] = req[ihl + 2]; o[21] = req[ihl + 3] // порт источника = 53
+        o[22] = req[ihl]; o[23] = req[ihl + 1]
+        val ulen = 8 + payload.size
+        o[24] = (ulen shr 8).toByte(); o[25] = ulen.toByte()
+        System.arraycopy(payload, 0, o, 28, payload.size)
+        return o
     }
 
     private fun stats(): String = try {

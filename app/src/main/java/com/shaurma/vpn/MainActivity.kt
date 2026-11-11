@@ -122,10 +122,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Код скопирован", Toast.LENGTH_SHORT).show()
         }
         findViewById<View>(R.id.setBuy).setOnClickListener { openBot() }
-        findViewById<View>(R.id.setDiag).setOnClickListener { showDiag() }
+        findViewById<View>(R.id.setDns).setOnClickListener { pickDns() }
         findViewById<TextView>(R.id.setMode).setOnClickListener {
-            val tg = prefs().getString("mode", "all") != "tg"
-            prefs().edit().putString("mode", if (tg) "tg" else "all").apply()
+            val next = when (prefs().getString("mode", "all")) { "all" -> "tg"; "tg" -> "dns"; else -> "all" }
+            prefs().edit().putString("mode", next).apply()
             updateModeText()
             if (vpnState != VpnController.State.OFF) {
                 Toast.makeText(this, "Переподключи VPN, чтобы режим применился", Toast.LENGTH_LONG).show()
@@ -295,6 +295,11 @@ class MainActivity : AppCompatActivity() {
     private fun onToggle() {
         if (vpnState != VpnController.State.OFF) {
             startService(Intent(this, ShaurmaVpnService::class.java).setAction(ShaurmaVpnService.ACTION_DISCONNECT))
+            return
+        }
+        if (prefs().getString("mode", "all") == "dns") {
+            val intent = VpnService.prepare(this)
+            if (intent != null) vpnPermission.launch(intent) else startVpn()
             return
         }
         if (fetching) return
@@ -489,9 +494,54 @@ class MainActivity : AppCompatActivity() {
 
     // ───────────────────────── настройки и диагностика ─────────────────────────
 
+    private fun dnsName() = when (prefs().getString("dns", "comss")) {
+        "comss" -> "Comss.one"
+        "cf" -> "Cloudflare"
+        "google" -> "Google"
+        else -> "свой"
+    }
+
+    private fun pickDns() {
+        val ids = listOf("comss", "cf", "google", "custom")
+        val names = arrayOf("Comss.one", "Cloudflare", "Google", "Свой адрес…")
+        AlertDialog.Builder(this)
+            .setTitle("DNS-сервер")
+            .setItems(names) { _, i ->
+                if (ids[i] != "custom") {
+                    prefs().edit().putString("dns", ids[i]).apply()
+                    updateModeText()
+                    return@setItems
+                }
+                val input = android.widget.EditText(this).apply {
+                    hint = "IP-адрес или https://…/dns-query"
+                    setSingleLine()
+                    setText(prefs().getString("dns_custom", ""))
+                    setPadding(48, 32, 48, 32)
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Свой DNS")
+                    .setView(input)
+                    .setPositiveButton("Сохранить") { _, _ ->
+                        val v = input.text.toString().trim()
+                        if (v.isNotEmpty()) {
+                            prefs().edit().putString("dns", "custom").putString("dns_custom", v).apply()
+                            updateModeText()
+                        }
+                    }
+                    .setNegativeButton("Отмена", null)
+                    .show()
+            }
+            .show()
+    }
+
     private fun updateModeText() {
         findViewById<TextView>(R.id.setMode).text =
-            if (prefs().getString("mode", "all") == "tg") "Режим: только Telegram" else "Режим: все приложения"
+            when (prefs().getString("mode", "all")) {
+                "tg" -> "Режим: только Telegram"
+                "dns" -> "Режим: DNS"
+                else -> "Режим: все приложения"
+            }
+        findViewById<TextView>(R.id.setDns).text = "DNS-сервер: " + dnsName()
     }
 
     private fun openSettings() {
@@ -499,32 +549,6 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.setUser).text = prefs().getString("user", "")
         findViewById<TextView>(R.id.setSub).text = subSummary()
         showScreen(settingsScreen)
-    }
-
-    private fun showDiag() {
-        val sb = StringBuilder("Состояние: $vpnState\nВерсия: ${BuildConfig.VERSION_NAME}\n")
-        VpnController.statsFn?.let { sb.append(it()).append('\n') }
-        sb.append("\n").append(VpnController.dump().ifEmpty { "(журнал пуст — сначала подключись)" })
-        val hev = runCatching { File(filesDir, "hev.log").readLines().takeLast(25) }.getOrDefault(emptyList())
-        if (hev.isNotEmpty()) sb.append("\n\n— туннель —\n").append(hev.joinToString("\n"))
-        val text = sb.toString()
-        val tv = TextView(this).apply {
-            this.text = text
-            textSize = 11f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTextIsSelectable(true)
-            setPadding(40, 24, 40, 24)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Диагностика")
-            .setView(ScrollView(this).apply { addView(tv) })
-            .setPositiveButton("Копировать") { _, _ ->
-                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                    .setPrimaryClip(ClipData.newPlainText("diag", text))
-                Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Закрыть", null)
-            .show()
     }
 
     // ───────────────────────── переключение экранов ─────────────────────────
