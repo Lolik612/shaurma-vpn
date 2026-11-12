@@ -207,6 +207,8 @@ class ShaurmaVpnService : VpnService() {
             throw IOException("не запустился туннель")
         }
         synchronized(lock) { tunnelStarted = true }
+        Thread.sleep(1200)
+        if (!TProxyService.TProxyIsRunning()) throw IOException("туннель остановился сразу после запуска")
         VpnController.statsFn = { stats() }
         VpnController.log("туннель запущен")
         Thread({
