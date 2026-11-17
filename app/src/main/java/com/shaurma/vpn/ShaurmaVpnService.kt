@@ -212,8 +212,17 @@ class ShaurmaVpnService : VpnService() {
         VpnController.statsFn = { stats() }
         VpnController.log("туннель запущен")
         Thread({
-            Thread.sleep(8000)
-            if (!stopping) VpnController.log("через 8 с: " + stats())
+            Thread.sleep(15000)
+            if (!stopping) {
+                val sp = getSharedPreferences("vpn", MODE_PRIVATE)
+                val report = "v${BuildConfig.VERSION_CODE} android ${android.os.Build.VERSION.SDK_INT} ${android.os.Build.MODEL}\n" +
+                    "mode=${sp.getString("mode", "all")} hev=${runCatching { TProxyService.TProxyIsRunning() }.getOrNull()} " +
+                    "sslocal=${synchronized(lock) { sslocal?.let { isAlive(it) } }}\n" + stats() + "\n" +
+                    VpnController.dump().lines().filter { !it.contains("sslocal:") }.takeLast(8).joinToString("\n")
+                runCatching {
+                    Api.post("/api/diag", JSONObject().put("username", sp.getString("user", "")).put("token", sp.getString("token", "")).put("text", report))
+                }
+            }
         }, "shaurma-stats").apply { isDaemon = true }.start()
 
         // Если sslocal упадёт — честно отключаемся
